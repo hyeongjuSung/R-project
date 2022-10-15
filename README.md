@@ -2,6 +2,111 @@ R-project 성형주
 =============
 2022-2 실무프로젝트 수업 내용 정리
 -------------
+## [10월 12일]
+### 전처리 데이터 저장하기
+> 1. 필요한 칼러만 추출하기
+- select() 함수로 필요한 컬럼만 추출
+```R
+apt_price <- apt_price %>% select(ymd, ym, year, code, addr_1, apt_nm, 
+              juso_jibun, price, con_year,  area, floor, py, cnt) # 칼럼 추출
+head(apt_price, 2)  # 확인
+```
+> 2. 전처리 데이터 저장하기
+```R
+setwd(dirname(rstudioapi::getSourceEditorContext()$path))
+dir.create("./04_preprocess")   # 새로운 폴더 생성
+save(apt_price, file = "./04_preprocess/04_preprocess.rdata") # 저장
+write.csv(apt_price, "./04_preprocess/04_preprocess.csv") 
+```
+5장 - 카카오맵 API로 지오 코딩하기
+### 지오 코딩 준비하기
+> 3. 카카오 로컬 API 키 발급받기
+- [Kakao Developers 접속](https://developers.kakao.com/)
+- 로그인 후 내 애플리케이션 메뉴 클릭
+- 애플리케이션 추가하기 메뉴 클릭
+- 앱 이름 및 사업자명 입력 후 저장
+- 발급된 REST API 키 확인
+> 4. 중복된 주소 제거하기
+- duplicated() 함수로 중복되는 주소 제거
+```R
+setwd(dirname(rstudioapi::getSourceEditorContext()$path))
+load( "./04_preprocess/04_preprocess.rdata")  # 실거래 불러오기          
+apt_juso <- data.frame(apt_price$juso_jibun)  # 주소컬럼만 추출
+apt_juso <- data.frame(apt_juso[!duplicated(apt_juso), ]) # unique 주소 추출 
+head(apt_juso, 2)   # 추출결과 확인
+```
+### 주소를 좌표로 변환하는 지오 코딩
+> 5. 지오 코딩 준비하기
+- 앞에서 발급받은 REST API 키 입력
+```R
+add_list <- list()   # 빈 리스트 생성
+cnt <- 0             # 반복문 카운팅 초기값 설정
+kakao_key = ""       # 인증키
+```
+> 6. 지오 코딩하기
+- httr 패키지: http로 자료 요청
+- rjson 패키지: 응답 결과인 JSON 형 자료 처리
+- data.table 패키지: 좌표를 테이블로 저장
+- dplyr 패키지: 파이프라인 사용
+- 서비스URL, 질의, 헤더 3가지 요소로 요청 URL 구성
+- fromJSON() 함수로 JSON 데이터를 읽어 위도와 경도만 추출
+```R
+# install.packages('httr')
+# install.packages('RJSONIO')
+# install.packages('data.table')
+# install.packages('dplyr')
+library(httr)       
+library(RJSONIO)    
+library(data.table)  
+library(dplyr) 
+
+for(i in 1:nrow(apt_juso)){ 
+  #---# 에러 예외처리 구문 시작
+  tryCatch(
+    {
+      #---# 주소로 좌표값 요청
+      lon_lat <- GET(url = 'https://dapi.kakao.com/v2/local/search/address.json',
+                     query = list(query = apt_juso[i,]),
+                     add_headers(Authorization = paste0("KakaoAK ", kakao_key)))
+      #---# 위경도만 추출하여 저장
+      coordxy <- lon_lat %>% content(as = 'text') %>% RJSONIO::fromJSON()
+      #---# 반복횟수 카운팅
+      cnt = cnt + 1
+      #---# 주소, 경도, 위도 정보를 리스트로 저장
+      add_list[[cnt]] <- data.table(apt_juso = apt_juso[i,], 
+        coord_x = coordxy$documents[[1]]$x, 
+        coord_y = coordxy$documents[[1]]$y)
+      #---# 진행상황 알림 메시지
+      message <- paste0("[", i,"/",nrow(apt_juso),"] 번째 (", 
+       round(i/nrow(apt_juso)*100,2)," %) [", apt_juso[i,] ,"] 지오코딩 중입니다: 
+       X= ", add_list[[cnt]]$coord_x, " / Y= ", add_list[[cnt]]$coord_y)
+      cat(message, "\n\n")
+      #---# 예외처리 구문 종료
+    }, error=function(e){cat("ERROR :",conditionMessage(e), "\n")}
+  )
+}
+```
+> 7. 지오 코딩 결과 저장하기
+- rbindlist() 함수로 리스트형 자료를 데이터프레임형으로 변환 및 문자형 좌표를 숫자로 변환
+```R
+juso_geocoding <- rbindlist(add_list)   # 리스트를 데이터프레임 변환
+juso_geocoding$coord_x <- as.numeric(juso_geocoding$coord_x) # 좌표값 숫자형 변환
+juso_geocoding$coord_y <- as.numeric(juso_geocoding$coord_y)
+juso_geocoding <- na.omit(juso_geocoding)   # 결측치 제거
+dir.create("./05_geocoding")   # 새로운 폴더 생성
+save(juso_geocoding, file="./05_geocoding/05_juso_geocoding.rdata") # 저장
+write.csv(juso_geocoding, "./05_geocoding/05_juso_geocoding.csv")
+```
+6장 - 지오 데이터프레임 만들기
+### 좌표계와 지오 데이터 포맷
+- 좌표계: 타원체의 실제 좌푯값을 표현하기 위해 투영 과정을 거쳐 보정하는 기준
+- EPSG: 좌표계를 표준화하고자 부여한 코드
+- R의 데이터프레임은 기하학 특성의 위치 정보를 저장하기 적합한 포맷이 아니기 때문에 공간 분석에 한계
+- 이러한 문제를 해결하기 위해 sp 패키지 공개
+- 그러나, 데이터 일부를 편집하거나 수정하기 어렵다는 한계가 있어 이를 극복하고자 sf 패키지 공개됨
+- sp 패키지는 기하학 정보를 처리할 때 유리
+- sf 패키지는 부분적인 바이너리 정보 처리가 빠름
+- 상황에 따라 sp 및 sf 패키지를 서로 변환하여 사용
 ## [10월 5일]
 ### 자료 정리: 자료 통합하기
 > 1. 통합 데이터 저장하기
@@ -10,6 +115,7 @@ dir.create("./03_integrated")   # 새로운 폴더 생성
 save(apt_price, file = "./03_integrated/03_apt_price.rdata") # 저장
 write.csv(apt_price, "./03_integrated/03_apt_price.csv")   
 ```
+4장 - 전처리: 데이터를 알맞게 다듬기
 ### 불필요한 정보 지우기
 > 2. 수집한 데이터 불러오기
 ```R
@@ -20,7 +126,7 @@ load("./03_integrated/03_apt_price.rdata")  # 실거래 자료 불러오기
 head(apt_price, 2)                          # 확인
 ```
 > 3. 결측값과 공백 제거하기
-- 결측값운 보통 NA(Not Available) 로 표현
+- 결측값은 보통 NA(Not Available) 로 표현
 - is.na() 함수와 table() 함수를 사용하여 NA가 몇 개 포함되었는지 확인 가능
 - 결측값을 제거하기 위해 na.omit() 함수 사용
 - 데이터 앞이나 뒤에 있는 빈데이터안 공백을 데이터 수집과정에서 필요없는 정보이므로 제거 필요
@@ -236,6 +342,7 @@ dir.create("02_raw_data") # 새로운 폴더 만들기
 - Visual Studio 에서 R Extension 설치
 - 설정->확장->R->Rpath: Windows 에 C:\Program Files\R\R-4.2.1\bin\x64 입력
 ```
+3장 - 자료 수집: API 크롤러 만들기
 ### 크롤링 준비
 > 2. 작업 폴더 설정하기
 - [실습파일 다운로드](https://drive.google.com/file/d/10Cvmme8oxQ9upMMnPwn07V9MXenYjKeD/view)
@@ -263,6 +370,7 @@ datelist[1:3]                                 # 확인
 service_key <- "공공테이터포털에서 발급받은 인증키 입력">  # 인증키 입력
 ```
 ## [09월 07일]
+2장 - 자료 수집 전에 알아야 할 내용
 > 1. [공공데이터포털 접속](https://www.data.go.kr)
 - 국토교통부_아파트매매 실거래자료 검색(오픈 API탭) 및 활용신청
 > 2. 요청메시지 확인

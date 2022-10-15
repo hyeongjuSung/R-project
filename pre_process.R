@@ -74,3 +74,18 @@ min(apt_price$floor)
 
 apt_price$cnt <- 1   # 모든 데이터에 숫자 1 할당
 head(apt_price, 2)   # 확인
+
+#---------------
+# 4-3 저장하기
+#---------------
+
+#---# [1단계: 필요칼럼 추출]
+apt_price <- apt_price %>% select(ymd, ym, year, code, addr_1, apt_nm, 
+              juso_jibun, price, con_year,  area, floor, py, cnt) # 칼럼 추출
+head(apt_price, 2)  # 확인
+
+#---# [2단계: 저장]
+setwd(dirname(rstudioapi::getSourceEditorContext()$path))
+dir.create("./04_preprocess")   # 새로운 폴더 생성
+save(apt_price, file = "./04_preprocess/04_preprocess.rdata") # 저장
+write.csv(apt_price, "./04_preprocess/04_preprocess.csv") 
