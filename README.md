@@ -2,6 +2,52 @@ R-project 성형주
 =============
 2022-2 실무프로젝트 수업 내용 정리
 -------------
+## [10월 26일]
+### 주소와 좌표 결합하기
+> 1. 데이터 불러오기
+```R
+setwd(dirname(rstudioapi::getSourceEditorContext()$path))
+load("./04_preprocess/04_preprocess.rdata")    # 주소 불러오기
+load("./05_geocoding/05_juso_geocoding.rdata") # 좌표 불러오기
+```
+> 2. 주소와 좌표 결합하기
+- 데이터 결합을 위해 left_join() 함수 사용
+```R
+# install.packages('dplyr')
+library(dplyr)   
+apt_price <- left_join(apt_price, juso_geocoding, 
+                       by = c("juso_jibun" = "apt_juso")) # 결합
+apt_price <- na.omit(apt_price)   # 결측치 제거
+```
+### 지오 데이터프레임 만들기
+> 3. 지오 데이터프레임 생성하기
+- x, y 의 공간좌표 설정을 위해 coordinates() 함수 사용
+- 좌표가 어떤 좌표계를 참조하는지 정의하기 위해 proj4string() 함수 사용
+- 공간 데이터를 편리하게 다루기 위해 st_as_sf() 함수를 이용해 지오 데이터프레임으로 변환
+```R
+library(sp)    # install.packages('sp')
+coordinates(apt_price) <- ~coord_x + coord_y    # 좌표값 할당
+proj4string(apt_price) <- "+proj=longlat +datum=WGS84 +no_defs" # 좌표계(CRS) 정의
+library(sf)    # install.packages('sf')
+apt_price <- st_as_sf(apt_price)     # sp형 => sf형 변환
+```
+> 4. 지오 데이터프레임 시각화
+- 데이터프레임 시각화를 위해 plot() 함수 사용
+- 빈 캔버스를 그리기 위해 leaflet() 함수 사용
+- 기본 지도인 오픈스트리트맵을 불러오기 위해 addTiles() 함수 사용
+```R
+plot(apt_price$geometry, axes = T, pch = 1)        # 플롯 그리기 
+library(leaflet)   # install.packages('leaflet')   # 지도 그리기
+leaflet() %>% 
+  addTiles() %>% 
+  addCircleMarkers(data=apt_price[1:1000,], label=~apt_nm) # 일부분(1000개)만 그리기
+```
+> 5. 지오 데이터프레임 저장하기
+```R
+dir.create("06_geodataframe")   # 새로운 폴더 생성
+save(apt_price, file="./06_geodataframe/06_apt_price.rdata") # rdata 저장
+write.csv(apt_price, "./06_geodataframe/06_apt_price.csv")   # csv 저장
+```
 ## [10월 12일]
 ### 전처리 데이터 저장하기
 > 1. 필요한 칼러만 추출하기
