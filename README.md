@@ -2,6 +2,68 @@ R-project 성형주
 =============
 2022-2 실무프로젝트 수업 내용 정리
 -------------
+## [11월 2일]
+7장 - 분석 주제를 지도로 시각화하기
+### 어느 지역이 제일 비쌀까?
+> 1. 지역별 평균 가격 구하기
+- st_read() 함수로 읽어온 서울시 그리드 파일을 st_join() 함수로 특성이 서로 다른 두 테이터를 결합
+- 결합 옵션은 2개의 형상이 교차하는지를 판별하는 st_intersects 사용
+- aggregate() 함수로 그리드 내에 거래된 평당 거래가를 취합
+```R
+setwd(dirname(rstudioapi::getSourceEditorContext()$path)) # 작업폴더 설정
+load("./06_geodataframe/06_apt_price.rdata")   # 실거래 불러오기
+library(sf)    # install.packages("sf") 
+grid <- st_read("./01_code/sigun_grid/seoul.shp")     # 서울시 1km 그리드 불러오기
+apt_price <-st_join(apt_price, grid, join = st_intersects)  # 실거래 + 그리드 결합
+head(apt_price)
+
+kde_high <- aggregate(apt_price$py, by=list(apt_price$ID), mean) # 그리드별 평균가격(평당) 계산
+colnames(kde_high) <- c("ID", "avg_price")   # 컬럼명 변경
+head(kde_high, 2)     # 확인
+```
+> 2. 평균 가격 정보 표시하기
+- merge() 함수로 그리드 정보를 평균가격에 공간 결합
+```R
+kde_high <- merge(grid, kde_high,  by="ID")   # ID 기준으로 결합
+library(ggplot2) # install.packages("ggplot2")
+library(dplyr)   # install.packages("dplyr")
+kde_high %>% ggplot(aes(fill = avg_price)) + # 그래프 시각화
+  geom_sf() + 
+  scale_fill_gradient(low = "white", high = "red")
+```
+> 3. 지도 경계 그리기
+- 데이터가 집중된 곳을 찾기 위해 커널 밀도 추정 이용
+- coordinates() 함수로 각 그리드의 중심좌표를 추출
+- bbox() 함수로 11부터 14까지 외곽 끝 지점을 나타내는 좌표 4개 추출
+- owin() 함수로 외곽 좌표를 연결하는 지도 경계선 생성
+```R
+library(sp) # install.packages("sp")
+kde_high_sp <- as(st_geometry(kde_high), "Spatial")    # sf형 => sp형 변환
+x <- coordinates(kde_high_sp)[,1]  # 그리드 x, y 좌표 추출
+y <- coordinates(kde_high_sp)[,2] 
+
+l1 <- bbox(kde_high_sp)[1,1] - (bbox(kde_high_sp)[1,1]*0.0001) # 그리드 기준 경계지점 설정
+l2 <- bbox(kde_high_sp)[1,2] + (bbox(kde_high_sp)[1,2]*0.0001)
+l3 <- bbox(kde_high_sp)[2,1] - (bbox(kde_high_sp)[2,1]*0.0001)
+l4 <- bbox(kde_high_sp)[2,2] + (bbox(kde_high_sp)[1,1]*0.0001)
+
+library(spatstat)  # install.packages("spatstat")
+win <- owin(xrange=c(l1,l2), yrange=c(l3,l4)) # 지도 경계선 생성
+plot(win)         # 지도 경계선 확인
+rm(list = c("kde_high_sp", "apt_price", "l1", "l2", "l3", "l4")) # 변수 정리
+```
+> 4. 밀도 그래프 표시하기
+- 커널 밀도 추정을 위해 지도 경계선 내의 포인트 분포 데이터로 커널 밀도 계산
+- ppp() 함수로 위도와 경도를 포인트로 변환
+- density.ppp() 함수로 생성한 포인트를 연속된 곡선을 가지는 커널로 변환
+```R
+p <- ppp(x, y, window=win)  # 경계창 위에 좌표값 포인트 생성
+d <- density.ppp(p, weights=kde_high$avg_price, # 포인트를 커널밀도 함수로 변환
+                 sigma = bw.diggle(p), 
+                 kernel = 'gaussian')  
+plot(d)   # 확인
+rm(list = c("x", "y", "win","p")) # 변수 정리
+```
 ## [10월 26일]
 ### 주소와 좌표 결합하기
 > 1. 데이터 불러오기
