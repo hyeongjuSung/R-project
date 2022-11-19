@@ -2,6 +2,92 @@ R-project 성형주
 =============
 2022-2 실무프로젝트 수업 내용 정리
 -------------
+## [11월 16일]
+9장 - 샤이니 입문하기
+### 처음 만나는 샤이니
+> 1. 샤이니 기본 구조 이해하기
+- R은 분석 결과를 웹 애플리케이션으로 구현할 수 있는 샤이니라는 패키지 제공
+```R
+library(shiny)  # install.packages("shiny")  
+ui <- fluidPage("사용자 인터페이스")  # 구성 1: ui
+server <- function(input, output, session){}  # 구성 2: server
+shinyApp(ui, server)  # 구성 3: 실행
+```
+> 2. 샘플 실행해보기
+- 데이터 분석은 명령형과 반응형 방식으로 구분
+- 명령형은 데이터 분석을 단계별로 진행(R 데이터 분석)
+- 반응형은 분석을 진행하다가 특정한 조건이 바뀌면 되돌아가 다시 분석(샤이니 애플리케이션)
+```R
+library(shiny)    # 라이브러리 등록
+runExample()      # 샘플 보여주기
+runExample("01_hello")   # 첫 번째 샘플 실행하기
+```
+> 3. 사용자 인터페이스 부분
+- fluidPage() 로 단일 페이지 화면 생성
+```R
+library(shiny)       # 라이브러리 등록
+ui <- fluidPage(     # 사용자 인터페이스 시작: fluidPage 정의
+  titlePanel("샤이니 1번 샘플"),  # 타이틀 입력
+  #---# 레이아웃 구성: 사이드바 패널 + 메인패널 
+  sidebarLayout(
+    sidebarPanel(  # 사이드바 패널 시작
+      #--- 입력값: input$bins 저장
+      sliderInput(inputId = "bins",         # 입력 아이디  
+                  label = "막대(bin)갯수:",  # 텍스트 라벨  
+                  min = 1, max = 50,        # 선택 범위(1-50)
+                  value = 30)),             # 기본 선택 값 30
+    mainPanel(   # 메인패널 시작
+      #---# 출력값: output$distPlot 저장
+      plotOutput(outputId = "distPlot"))  # 차트 출력
+  ))
+```
+> 4. 서버 부분
+- server()는 ui()의 input$bins 데이터를 받아 분석한 후 output$distPlot로 전달
+- session은 여러 사람이 동시에 샤이니를 이용할 경우 독립성을 확보하는 역할을 수행
+```R
+server <- function(input, output, session){
+  #---# 랜더링한 플롯을 output 인자의 distPlot에 저장
+  output$distPlot <- renderPlot({
+    x <- faithful$waiting # 분출대기시간 정보 저장
+    #---# input$bins을 플롯으로 랜더링
+    bins <- seq(min(x), max(x), length.out = input$bins + 1)
+    #---# 히스토그램 그리기 (맥 사용자 폰트 추가 필요)
+    hist(x, breaks = bins, col = "#75AADB", border = "white",
+         xlab = "다음 분출때까지 대기시간(분)",  
+         main = "대기시간 히스토그램")
+  })
+}
+#---# 실행
+shinyApp(ui, server)
+rm(list = ls())  # 메모리 정리하기 
+```
+### 입력과 출력하기
+> 5. 입력받기 input$~
+- 샤이니는 입력 조건을 바꿔서 서버의 계산을 거쳐 출력 결과로 전달하는 과정 중요
+- 아래의 코드는 ui의 입력함수만 정의하고 이를 분석해 다시 돌려주는 server()의 출력함수를 정의하지 않았으므로 슬라이더를 조작해도 변화 X
+```R
+library(shiny) 
+ui <- fluidPage(   
+  sliderInput("range", "연비", min = 0, max = 35, value = c(0, 10))) # 입력
+
+server <- function(input, output, session){}  # 반응 없음
+
+shinyApp(ui, server)  # 실행
+```
+> 6. 출력하기 output$~
+- renderText() 내에서 입력값을 더한 다음 output$value에 저장
+- 이 값이 textOutput로 연결되어 계산된 값을 화면에 출력
+```R
+library(shiny) 
+ui <- fluidPage(
+  sliderInput("range", "연비", min = 0, max = 35, value = c(0, 10)), # 입력
+  textOutput("value"))  
+
+server <- function(input, output, session){
+  output$value <- renderText((input$range[1] + input$range[2]))} 
+
+shinyApp(ui, server)
+```
 ## [11월 9일]
 7장 - 분석 주제를 지도로 시각화하기
 > 6. 불필요한 부분 자르기
