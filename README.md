@@ -2,6 +2,170 @@ R-project 성형주
 =============
 2022-2 실무프로젝트 수업 내용 정리
 -------------
+## [11월 23일]
+### 반응형 웹 애플리케이션 만들기
+> 1. 데이터 준비하기
+- 반응성: 입력값이 변경될 때 서버가 자동으로 변화를 감지하여 출력값을 렌더링 후 갱신하는 것
+- DT 패키지: 데이터 테이블을 편리하게 다룰 수 있는 패키지
+- mpg: ggplot2 패키지에 포함된 자동차 연비 테스트 결과 테이터 세트 불러옴
+```R
+library(DT)      # install.packages("DT")
+library(ggplot2) # install.packages("ggplot2")
+mpg <- mpg
+head(mpg)
+```
+> 2. 반응식 작성하기
+- sliderInput() 으로 연비 범위 슬라이드 생성
+- subset() 으로 반응식 결과 저장
+- 반응식 결과를 사용할 때 뒤에 호출연산자 ()를 붙여야 함
+```R
+library(shiny) 
+ui <- fluidPage(
+  sliderInput("range", "연비", min = 0, max = 35, value = c(0, 10)), # 입력
+  DT::dataTableOutput("table"))   # 출력
+
+server <- function(input, output, session){
+  #---# 반응식
+  cty_sel = reactive({  
+    cty_sel = subset(mpg, cty >= input$range[1] & cty <= input$range[2])
+    return(cty_sel)})    
+  #---# 반응결과 렌더링
+  output$table <- DT::renderDataTable(cty_sel()) }
+
+shinyApp(ui, server)
+```
+### 레이아웃 정의하기
+> 3. 단일 페이지 레이아웃
+- 샤이니에서 레이아웃은 제한된 화면 안에 입력 위젯과 출력 결과를 배치하는 방식을 의미
+- 그리드라는 규격화 된 레이아웃 선호
+- 그리드 방식을 사용하려면 ui()에서 fluidPage() - fluidRow() - column() 순으로 화면을 정의
+```R
+library(shiny)
+#---# 전체 페이지 정의
+ui <- fluidPage(  
+  #---# 행 row 구성 정의
+  fluidRow(    
+    #---# 첫번째 열: 붉은색(red) 박스로 높이 450 픽셀, 폭 9
+    column(9, div(style = "height:450px;border: 4px solid red;","폭 9")),
+    #---# 두번째 열: 보라색(purple) 박스로 높이 450 픽셀, 폭 3
+    column(3, div(style = "height:450px;border: 4px solid purple;","폭 3")),
+    #---# 세번째 열: 파란색(blue) 박스로 높이 400 픽셀, 폭 12
+    column(12, div(style = "height:400px;border: 4px solid blue;","폭 12"))))
+server <- function(input, output, session) {}
+shinyApp(ui, server)
+```
+> 4. 탭 페이지 추가하기
+- tabsetPanel()로 탭 패널을 추가
+```R
+library(shiny)
+ui <- fluidPage(
+  fluidRow(
+    column(9, div(style = "height:450px;border: 4px solid red;","폭 9")),
+    column(3, div(style = "height:450px;border: 4px solid red;","폭 3")),
+    #---# 탭패널 1~2번 추가 
+    tabsetPanel(
+      tabPanel("탭1",   
+               column(4, div(style = "height:300px;border: 4px solid red;","폭 4")),
+               column(4, div(style = "height:300px;border: 4px solid red;","폭 4")),           
+               column(4, div(style = "height:300px;border: 4px solid red;","폭 4")), ),              
+      tabPanel("탭2", div(style = "height:300px;border: 4px solid blue;","폭 12")))))
+server <- function(input, output, session) {}
+shinyApp(ui, server)
+```
+10장 - 데이터 분석 애플리케이션 개발하기
+### 반응형 지도 만들기
+> 1. 데이터 불러오기
+- leaflet: 반응형 지도를 만드는 자바스크립트 라이브러리
+```R
+setwd(dirname(rstudioapi::getSourceEditorContext()$path))
+load("./06_geodataframe/06_apt_price.rdata")      # 아파트 실거래 데이터
+library(sf)
+bnd <- st_read("./01_code/sigun_bnd/seoul.shp")   # 서울시 경계선
+load("./07_map/07_kde_high.rdata")    # 최고가 래스터 이미지
+load("./07_map/07_kde_hot.rdata")     # 급등지역 래스터 이미지
+grid <- st_read("./01_code/sigun_grid/seoul.shp")   # 서울시 그리드
+```
+> 2. 마커 클러스터링 설정
+- 데이터가 왜곡되는 것을 방지하고자 quantile()로 지점 특정
+```R
+pcnt_10 <-as.numeric(quantile(apt_price$py, probs=seq(.1,.9,by=.1))[1])   # 하위10%
+pcnt_90 <-as.numeric(quantile(apt_price$py, probs=seq(.1,.9,by=.1))[9])   # 상위10%
+load("./01_code/circle_marker/circle_marker.rdata")   # 마커 클러스터링 함수
+circle.colors <- sample(x=c("red","green","blue"), size=1000, replace=TRUE)
+```
+> 3. 반응형 지도 만들기
+- 래스터 이미지 레이어를 바꿀 수 있도록 addLayersControl()로 변경 스위치 추가
+```R
+library(leaflet)
+library(purrr)
+library(raster)
+leaflet() %>% 
+  #---# 기본 맵 설정: 오픈스트리트맵
+  addTiles(options = providerTileOptions(minZoom = 9, maxZoom = 18)) %>% 
+  #---# 최고가 지역 KDE 
+  addRasterImage(raster_high, 
+    colors = colorNumeric(c("blue", "green","yellow","red"), 
+    values(raster_high), na.color = "transparent"), opacity = 0.4, 
+    group = "2021 최고가") %>%
+  #---# 급등 지역 KDE 
+  addRasterImage(raster_hot, 
+    colors = colorNumeric(c("blue", "green","yellow","red"), 
+    values(raster_hot), na.color = "transparent"), opacity = 0.4, 
+    group = "2021 급등지") %>%
+  #---# 레이어 스위치 메뉴
+  addLayersControl(baseGroups = c("2021 최고가", "2021 급등지"), 
+    options = layersControlOptions(collapsed = FALSE)) %>%   
+  #---# 서울시 외곽 경계선
+  addPolygons(data=bnd, weight = 3, stroke = T, color = "red", 
+    fillOpacity = 0) %>%
+  #---# 마커 클러스터링
+  addCircleMarkers(data = apt_price, lng =unlist(map(apt_price$geometry,1)), 
+    lat = unlist(map(apt_price$geometry,2)), radius = 10, stroke = FALSE, 
+    fillOpacity = 0.6, fillColor = circle.colors, weight=apt_price$py, 
+    clusterOptions = markerClusterOptions(iconCreateFunction=JS(avg.formula))) 
+```
+### 지도 애플리케이션 만들기
+> 4. 그리드 필터링하기
+- 그리드 데이터는 sf형이음로 필요한 부분만 잘라내기위해 sp형으로 바꾼 후 변환
+```R
+grid <- st_read("./01_code/sigun_grid/seoul.shp")       # 그리드 불러오기
+grid <- as(grid, "Spatial") ; grid <- as(grid, "sfc")   # 변환
+grid <- grid[which(sapply(st_contains(st_sf(grid),apt_price),length) > 0)]   # 필터링
+plot(grid)   # 그리드 확인
+```
+> 2. 반응형 지도 모듈화하기
+- leaflet 기반 반응형 지도 생성
+- addFeatures()로 그리드 지도 레이어가 추가
+- 지도를 m이라는 변수로 저장
+```R
+m <- leaflet() %>% 
+  #---# 기본 맵 설정: 오픈스트리트맵
+  addTiles(options = providerTileOptions(minZoom = 9, maxZoom = 18)) %>% 
+  #---# 최고가 지역 KDE 
+  addRasterImage(raster_high, 
+    colors = colorNumeric(c("blue", "green","yellow","red"), 
+    values(raster_high), na.color = "transparent"), opacity = 0.4, 
+    group = "2021 최고가") %>%
+  #---# 급등 지역 KDE 
+  addRasterImage(raster_hot, 
+    colors = colorNumeric(c("blue", "green","yellow","red"), 
+    values(raster_hot), na.color = "transparent"), opacity = 0.4, 
+    group = "2021 급등지") %>%
+  #---# 레이어 스위치 메뉴
+  addLayersControl(baseGroups = c("2021 최고가", "2021 급등지"),
+    options = layersControlOptions(collapsed = FALSE)) %>%   
+  #---# 서울시 외곽 경계선
+  addPolygons(data=bnd, weight = 3, stroke = T, color = "red", 
+    fillOpacity = 0) %>%
+  #---# 마커 클러스터링
+  addCircleMarkers(data = apt_price, lng =unlist(map(apt_price$geometry,1)), 
+    lat = unlist(map(apt_price$geometry,2)), radius = 10, stroke = FALSE, 
+    fillOpacity = 0.6, fillColor = circle.colors, weight=apt_price$py, 
+    clusterOptions = markerClusterOptions(iconCreateFunction=JS(avg.formula))) %>%
+  #---# 그리드
+  leafem::addFeatures(st_sf(grid), layerId= ~seq_len(length(grid)), color = 'grey')
+m
+```
 ## [11월 16일]
 9장 - 샤이니 입문하기
 ### 처음 만나는 샤이니
